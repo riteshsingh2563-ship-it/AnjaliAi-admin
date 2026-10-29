@@ -249,6 +249,7 @@ export class AiProviderError extends Error {
 }
 
 const FALLBACK_NVIDIA_MODELS = [
+  "nvidia/nemotron-3.5-lightning-30b-a3b",
   "google/gemma-4-31b-it",
   "meta/llama-3.3-70b-instruct",
   "meta/llama-3.1-70b-instruct",
