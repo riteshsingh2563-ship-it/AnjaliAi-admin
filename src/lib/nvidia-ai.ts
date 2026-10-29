@@ -250,6 +250,7 @@ export class AiProviderError extends Error {
 
 const FALLBACK_NVIDIA_MODELS = [
   "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "nemotron-3.5-lightning-30b-a3b",
   "google/gemma-4-31b-it",
   "meta/llama-3.3-70b-instruct",
   "meta/llama-3.1-70b-instruct",
@@ -369,11 +370,19 @@ export async function executeServerNvidiaChatCompletion(params: {
   }
 
   const endpoint = ai.apiEndpoint?.trim() || DEFAULT_NVIDIA_API_ENDPOINT;
-  const rawModel = (params.modelOverride || ai.selectedModel || "google/gemma-4-31b-it").trim();
+  const rawModel = (
+    params.modelOverride ||
+    ai.selectedModel ||
+    "nvidia/nemotron-3.5-lightning-30b-a3b"
+  ).trim();
   const preferredModel =
     endpoint.includes("nvidia.com") && rawModel.startsWith("gemini-")
-      ? "google/gemma-4-31b-it"
-      : rawModel;
+      ? "nvidia/nemotron-3.5-lightning-30b-a3b"
+      : endpoint.includes("nvidia.com") &&
+          !rawModel.includes("/") &&
+          rawModel.startsWith("nemotron")
+        ? `nvidia/${rawModel}`
+        : rawModel;
 
   const modelCandidates = Array.from(
     new Set([preferredModel, ...FALLBACK_NVIDIA_MODELS]),
