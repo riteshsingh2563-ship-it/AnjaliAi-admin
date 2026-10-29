@@ -252,10 +252,6 @@ const FALLBACK_NVIDIA_MODELS = [
   "nvidia/nemotron-3.5-lightning-30b-a3b",
   "nemotron-3.5-lightning-30b-a3b",
   "google/gemma-4-31b-it",
-  "meta/llama-3.3-70b-instruct",
-  "meta/llama-3.1-70b-instruct",
-  "meta/llama-3.1-8b-instruct",
-  "google/gemma-2-27b-it",
 ];
 
 /**
@@ -424,7 +420,7 @@ export async function executeServerNvidiaChatCompletion(params: {
 
   for (const candidateModel of modelCandidates) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25_000);
+    const timeout = setTimeout(() => controller.abort(), 40_000);
     try {
       const response = await fetch(endpoint, {
         method: "POST",

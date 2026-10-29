@@ -50,9 +50,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 401 });
   }
 
-  if (!firebaseUser.emailVerified) {
+  if (!firebaseUser.email || !firebaseUser.emailVerified) {
     return NextResponse.json(
-      { error: "Your Google account email is not verified." },
+      { error: "Your Google account email is not verified or missing." },
       { status: 403 },
     );
   }

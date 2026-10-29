@@ -46,7 +46,11 @@ async function resolveCallerIdentity(
       try {
         const verified = await verifyFirebaseIdToken(idToken);
         return { authorized: true, userId: verified.uid };
-      } catch {
+      } catch (err) {
+        console.warn(
+          "Firebase ID token verification failed in /api/ai/chat:",
+          err instanceof Error ? err.message : err,
+        );
         // Fall through to admin session check
       }
     }

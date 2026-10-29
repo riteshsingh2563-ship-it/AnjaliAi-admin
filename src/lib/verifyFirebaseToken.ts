@@ -26,7 +26,7 @@ function getJwks() {
 
 export type VerifiedFirebaseUser = {
   uid: string;
-  email: string;
+  email?: string;
   emailVerified: boolean;
   name?: string;
   picture?: string;
@@ -55,13 +55,15 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<VerifiedFi
     );
   }
 
-  const email = typeof payload.email === "string" ? payload.email : undefined;
-  if (!email) {
-    throw new FirebaseTokenError("ID token does not contain a verified email address.");
+  const uid = String(payload.user_id ?? payload.sub ?? "");
+  if (!uid) {
+    throw new FirebaseTokenError("ID token does not contain a valid user ID.");
   }
 
+  const email = typeof payload.email === "string" ? payload.email : undefined;
+
   return {
-    uid: String(payload.user_id ?? payload.sub ?? ""),
+    uid,
     email,
     emailVerified: Boolean(payload.email_verified),
     name: typeof payload.name === "string" ? payload.name : undefined,
