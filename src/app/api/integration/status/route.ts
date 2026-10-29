@@ -7,8 +7,10 @@ import {
   isFirebaseAdminConfigured,
   isAdminSessionSecretConfigured,
   isUsageIngestConfigured,
+  isNvidiaConfigured,
   env,
 } from "@/lib/env";
+import { ensureDatabaseSchema } from "@/db/init";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
 import {
   getAiConfig,
@@ -33,6 +35,7 @@ export async function GET() {
   let adminCount = 0;
   try {
     await db.execute(sql`select 1`);
+    await ensureDatabaseSchema();
     databaseOk = true;
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -113,6 +116,7 @@ export async function GET() {
       configured: isFirebaseAdminConfigured && Boolean(env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
     },
     usageIngest: { configured: isUsageIngestConfigured },
+    nvidia: { configured: isNvidiaConfigured },
     publishState,
   });
 }

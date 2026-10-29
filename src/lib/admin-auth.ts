@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { adminAllowlist } from "@/db/schema";
 import { getAdminSessionFromCookies } from "@/lib/session";
+import { ensureDatabaseSchema } from "@/db/init";
 
 export type AuthorizedAdmin = {
   email: string;
@@ -21,6 +22,12 @@ export type AuthorizedAdmin = {
 export async function getAuthorizedAdmin(): Promise<AuthorizedAdmin | null> {
   const session = await getAdminSessionFromCookies();
   if (!session) return null;
+
+  try {
+    await ensureDatabaseSchema();
+  } catch (err) {
+    console.error("[getAuthorizedAdmin] Schema init check:", err);
+  }
 
   const rows = await db
     .select()

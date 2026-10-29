@@ -1,6 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
+import { ensureDatabaseSchema } from "@/db/init";
 import {
   personalityConfig,
   aiConfig,
@@ -17,6 +18,11 @@ import type {
 } from "@/lib/validation";
 
 export async function getPersonalityConfig() {
+  try {
+    await ensureDatabaseSchema();
+  } catch (err) {
+    console.error("[getPersonalityConfig] Schema check:", err);
+  }
   const rows = await db.select().from(personalityConfig).where(eq(personalityConfig.id, 1));
   if (rows[0]) return rows[0];
   const [created] = await db.insert(personalityConfig).values({ id: 1 }).returning();
@@ -24,6 +30,11 @@ export async function getPersonalityConfig() {
 }
 
 export async function getAiConfig() {
+  try {
+    await ensureDatabaseSchema();
+  } catch (err) {
+    console.error("[getAiConfig] Schema check:", err);
+  }
   const rows = await db.select().from(aiConfig).where(eq(aiConfig.id, 1));
   if (rows[0]) return rows[0];
   const [created] = await db.insert(aiConfig).values({ id: 1 }).returning();
@@ -31,6 +42,11 @@ export async function getAiConfig() {
 }
 
 export async function getCustomization() {
+  try {
+    await ensureDatabaseSchema();
+  } catch (err) {
+    console.error("[getCustomization] Schema check:", err);
+  }
   const rows = await db.select().from(appCustomization).where(eq(appCustomization.id, 1));
   if (rows[0]) return rows[0];
   const [created] = await db.insert(appCustomization).values({ id: 1 }).returning();
@@ -38,6 +54,11 @@ export async function getCustomization() {
 }
 
 export async function getGeneralSettings() {
+  try {
+    await ensureDatabaseSchema();
+  } catch (err) {
+    console.error("[getGeneralSettings] Schema check:", err);
+  }
   const rows = await db.select().from(generalSettings).where(eq(generalSettings.id, 1));
   if (rows[0]) return rows[0];
   const [created] = await db.insert(generalSettings).values({ id: 1 }).returning();

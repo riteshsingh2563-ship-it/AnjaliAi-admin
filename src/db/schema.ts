@@ -65,14 +65,20 @@ export const personalityConfig = pgTable("personality_config", {
 });
 
 // ---------------------------------------------------------------------------
-// AI model + response behaviour configuration (single row, id = 1)
+// AI model + NVIDIA provider + response behaviour configuration (single row, id = 1)
 // ---------------------------------------------------------------------------
 export const aiConfig = pgTable("ai_config", {
   id: integer("id").primaryKey().default(1),
-  selectedModel: text("selected_model").notNull().default("gemini-2.0-flash"),
+  provider: text("provider").notNull().default("nvidia"),
+  apiEndpoint: text("api_endpoint")
+    .notNull()
+    .default("https://integrate.api.nvidia.com/v1/chat/completions"),
+  nvidiaApiKey: text("nvidia_api_key").notNull().default(""),
+  backendUrl: text("backend_url").notNull().default("https://anjalia.vercel.app"),
+  selectedModel: text("selected_model").notNull().default("google/gemma-4-31b-it"),
   modelVerified: boolean("model_verified").notNull().default(true),
-  temperature: doublePrecision("temperature").notNull().default(0.9),
-  maxOutputTokens: integer("max_output_tokens").notNull().default(500),
+  temperature: doublePrecision("temperature").notNull().default(0.75),
+  maxOutputTokens: integer("max_output_tokens").notNull().default(600),
   supportedLanguages: jsonb("supported_languages").$type<string[]>().notNull().default(
     ["Hindi", "Hinglish", "English"],
   ),
@@ -164,7 +170,12 @@ export const usageLogs = pgTable("usage_logs", {
   requestType: text("request_type").notNull().default("chat_message"),
   status: text("status").notNull().default("success"), // success | failure | rate_limited
   tokensUsed: integer("tokens_used"),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
   model: text("model"),
+  provider: text("provider").default("nvidia"),
   latencyMs: integer("latency_ms"),
+  requestId: text("request_id"),
+  errorMessage: text("error_message"),
   source: text("source").notNull().default("ingest_api"),
 });

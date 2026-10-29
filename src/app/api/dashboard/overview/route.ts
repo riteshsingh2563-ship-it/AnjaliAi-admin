@@ -6,12 +6,14 @@ import { requireAuthorizedAdmin, UnauthorizedError } from "@/lib/admin-auth";
 import { getAiConfig, getGeneralSettings } from "@/lib/config-service";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
 import { isVerifiedModel } from "@/lib/validation";
+import { ensureDatabaseSchema } from "@/db/init";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAuthorizedAdmin();
+    await ensureDatabaseSchema();
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

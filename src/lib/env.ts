@@ -54,6 +54,11 @@ export const env = {
   // Shared secret used by trusted server-to-server callers (e.g. a Cloud
   // Function invoked by the Android app) to report AI usage events.
   USAGE_INGEST_API_KEY: val("USAGE_INGEST_API_KEY"),
+
+  // Server-side NVIDIA AI integration (keeps API key secret from mobile clients)
+  NVIDIA_API_KEY: val("NVIDIA_API_KEY"),
+  NVIDIA_API_ENDPOINT:
+    val("NVIDIA_API_ENDPOINT") ?? "https://integrate.api.nvidia.com/v1/chat/completions",
 };
 
 export const isFirebaseClientConfigured = Boolean(
@@ -68,5 +73,7 @@ export const isFirebaseAdminConfigured = Boolean(
 );
 
 export const isUsageIngestConfigured = Boolean(env.USAGE_INGEST_API_KEY);
+
+export const isNvidiaConfigured = Boolean(env.NVIDIA_API_KEY);
 
 export const isAdminSessionSecretConfigured = Boolean(env.ADMIN_SESSION_SECRET);

@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { CheckCircle2, XCircle, Database, Cloud, ShieldCheck, RefreshCw } from "lucide-react";
+import { CheckCircle2, XCircle, Database, Cloud, ShieldCheck, RefreshCw, Cpu } from "lucide-react";
 import { Card, CardHeader, Badge, Button, Spinner } from "@/components/ui/primitives";
 import { fetcher } from "@/lib/fetcher";
 import { formatDateTime } from "@/lib/format";
@@ -25,6 +25,7 @@ type IntegrationStatusResponse = {
   };
   storage: { configured: boolean };
   usageIngest: { configured: boolean };
+  nvidia: { configured: boolean };
   publishState: {
     personality: PublishSectionState;
     ai: PublishSectionState;
@@ -104,6 +105,18 @@ export function IntegrationClient() {
           detail={`Avatar Storage: ${data.storage.configured ? "Ready" : "Not configured"} • Usage Ingest API: ${
             data.usageIngest.configured ? "Ready" : "Not configured"
           }`}
+        />
+
+        <StatusItem
+          icon={<Cpu className="h-5 w-5" />}
+          title="NVIDIA AI Server-Side Proxy (/api/ai/chat)"
+          ok={data.nvidia?.configured ?? false}
+          badge={data.nvidia?.configured ? "Configured" : "Missing NVIDIA_API_KEY"}
+          detail={
+            data.nvidia?.configured
+              ? "Server-side proxy ready to process Android chat requests"
+              : "Android clients fallback to client-side direct API key"
+          }
         />
       </div>
 
