@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AI_PROVIDERS,
   CHAT_THEMES,
   CONVERSATION_TONES,
   FALLBACK_BEHAVIORS,
@@ -33,7 +34,23 @@ export const personalitySchema = z.object({
 export type PersonalityInput = z.infer<typeof personalitySchema>;
 
 export const aiConfigSchema = z.object({
-  selectedModel: z.string().trim().min(1).max(60),
+  provider: z.enum(AI_PROVIDERS).default("nvidia"),
+  apiEndpoint: z
+    .string()
+    .trim()
+    .min(1, "API endpoint is required")
+    .max(500)
+    .refine((v) => /^https?:\/\//.test(v), "API endpoint must start with http(s)://")
+    .default("https://integrate.api.nvidia.com/v1/chat/completions"),
+  backendUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((v) => v === "" || /^https?:\/\//.test(v), "Backend URL must start with http(s):// or be empty")
+    .default("https://anjalia.vercel.app"),
+  // Write-only field: only sent when an admin explicitly rotates the server-side API key
+  apiKey: z.string().trim().max(500).optional(),
+  selectedModel: z.string().trim().min(1).max(120),
   temperature: z.number().min(0).max(2),
   maxOutputTokens: z.number().int().min(16).max(8192),
   supportedLanguages: languageList,
@@ -59,7 +76,7 @@ export const customizationSchema = z.object({
     .trim()
     .max(2000)
     .refine((v) => v === "" || /^https?:\/\//.test(v), "Avatar URL must start with http(s):// or be empty"),
-  welcomeMessage: z.string().trim().min(1).max(300),
+  welcomeMessage: z.string().trim().min(1, "Welcome message is required").max(300),
   chatTheme: z.enum(CHAT_THEMES),
   accentColor: hexColor,
   backgroundColor: hexColor,

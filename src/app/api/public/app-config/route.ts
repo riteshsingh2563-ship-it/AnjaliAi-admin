@@ -6,6 +6,7 @@ import {
   getGeneralSettings,
 } from "@/lib/config-service";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Public, read-only fallback for the published app configuration. Contains
@@ -50,6 +51,9 @@ export async function GET() {
       emojiEnabled: personality.emojiUsage,
       friendlySupportive: personality.friendlySupportive,
       maximumResponseLength: ai.maxOutputTokens,
+      provider: ai.provider,
+      apiEndpoint: ai.apiEndpoint,
+      backendUrl: ai.backendUrl,
       selectedModel: ai.selectedModel,
       temperature: ai.temperature,
       aiEnabled: ai.aiEnabled,

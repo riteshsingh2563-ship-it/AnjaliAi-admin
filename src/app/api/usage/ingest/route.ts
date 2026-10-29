@@ -1,61 +1,79 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/db";
-import { usageLogs } from "@/db/schema";
-import { env, isUsageIngestConfigured } from "@/lib/env";
-import { verifyFirebaseIdToken, FirebaseTokenError } from "@/lib/verifyFirebaseToken";
+import { getAuthorizedAdmin } from "@/lib/admin-auth";
+import { verifyFirebaseIdToken } from "@/lib/verifyFirebaseToken";
+import { env } from "@/lib/env";
+import { recordUsageEvent, sanitizeErrorMessage } from "@/lib/nvidia-ai";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Ingestion endpoint supporting:
-// 1. Trusted backend services (authorized via `x-api-key: USAGE_INGEST_API_KEY`)
-// 2. Authenticated Android mobile app clients (authorized via `Authorization: Bearer <FirebaseIdToken>`)
+// Accepts usage events from:
+// 1. Trusted server-to-server callers using `x-api-key: <USAGE_INGEST_API_KEY>`
+// 2. Authenticated Android app users via `Authorization: Bearer <firebaseIdToken>`
+// 3. Authorized administrators logged into the dashboard
 const bodySchema = z.object({
-  userId: z.string().max(200).optional().nullable(),
+  userId: z.string().max(200).optional(),
   requestType: z.string().max(60).default("chat_message"),
   status: z.enum(["success", "failure", "rate_limited"]).default("success"),
-  tokensUsed: z.number().int().min(0).max(1000000).optional().nullable(),
-  promptTokens: z.number().int().min(0).max(1000000).optional().nullable(),
-  completionTokens: z.number().int().min(0).max(1000000).optional().nullable(),
-  model: z.string().max(100).optional().nullable(),
-  provider: z.string().max(60).optional().nullable(),
-  latencyMs: z.number().int().min(0).max(600000).optional().nullable(),
-  requestId: z.string().max(100).optional().nullable(),
-  errorMessage: z.string().max(500).optional().nullable(),
-  source: z.string().max(60).optional().nullable(),
+  tokensUsed: z.number().int().min(0).max(1000000).nullable().optional(),
+  promptTokens: z.number().int().min(0).max(1000000).nullable().optional(),
+  completionTokens: z.number().int().min(0).max(1000000).nullable().optional(),
+  model: z.string().max(120).nullable().optional(),
+  provider: z.string().max(40).nullable().optional(),
+  latencyMs: z.number().int().min(0).max(600000).nullable().optional(),
+  requestId: z.string().max(160).nullable().optional(),
+  errorMessage: z.string().max(300).nullable().optional(),
+  source: z.string().max(60).optional(),
 });
 
-export async function POST(request: NextRequest) {
-  let authorizedSource: "ingest_api" | "android_app" | null = null;
-  let authUid: string | null = null;
-
-  // 1. Check shared secret API key
-  const providedApiKey = request.headers.get("x-api-key");
-  if (isUsageIngestConfigured && providedApiKey && providedApiKey === env.USAGE_INGEST_API_KEY) {
-    authorizedSource = "ingest_api";
+async function authorizeUsageIngest(
+  request: NextRequest,
+): Promise<{ authorized: boolean; verifiedUserId: string | null; defaultSource: string }> {
+  // 1. Check shared secret header
+  const providedKey = request.headers.get("x-api-key");
+  if (env.USAGE_INGEST_API_KEY && providedKey === env.USAGE_INGEST_API_KEY) {
+    return { authorized: true, verifiedUserId: null, defaultSource: "ingest_api" };
   }
 
-  // 2. Check Firebase ID Token (for Android app telemetry fallback)
-  if (!authorizedSource) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.substring(7).trim();
+  // 2. Check Firebase ID token from the Android app
+  const authHeader = request.headers.get("authorization");
+  if (authHeader?.toLowerCase().startsWith("bearer ")) {
+    const idToken = authHeader.slice(7).trim();
+    if (idToken) {
       try {
-        const verifiedUser = await verifyFirebaseIdToken(token);
-        authorizedSource = "android_app";
-        authUid = verifiedUser.uid;
-      } catch (tokenErr) {
-        const msg = tokenErr instanceof FirebaseTokenError ? tokenErr.message : "Invalid ID token";
-        return NextResponse.json({ error: `Unauthorized: ${msg}` }, { status: 401 });
+        const verified = await verifyFirebaseIdToken(idToken);
+        return {
+          authorized: true,
+          verifiedUserId: verified.uid,
+          defaultSource: "android_app",
+        };
+      } catch {
+        // Fall through
       }
     }
   }
 
-  if (!authorizedSource) {
+  // 3. Check Admin session cookie
+  const admin = await getAuthorizedAdmin();
+  if (admin) {
+    return {
+      authorized: true,
+      verifiedUserId: `admin:${admin.email}`,
+      defaultSource: "admin_dashboard",
+    };
+  }
+
+  return { authorized: false, verifiedUserId: null, defaultSource: "ingest_api" };
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await authorizeUsageIngest(request);
+  if (!auth.authorized) {
     return NextResponse.json(
       {
         error:
-          "Unauthorized: Missing or invalid credentials. Provide either 'x-api-key' or 'Authorization: Bearer <FirebaseIdToken>'.",
+          "Unauthorized. Provide a valid Firebase ID token in Authorization: Bearer <token> or a valid x-api-key header.",
       },
       { status: 401 },
     );
@@ -63,29 +81,41 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = bodySchema.parse(await request.json());
+    const resolvedTokens =
+      typeof body.tokensUsed === "number"
+        ? body.tokensUsed
+        : typeof body.promptTokens === "number" &&
+            typeof body.completionTokens === "number"
+          ? body.promptTokens + body.completionTokens
+          : null;
 
-    const totalTokens =
-      body.tokensUsed ??
-      (body.promptTokens != null && body.completionTokens != null
-        ? body.promptTokens + body.completionTokens
-        : null);
-
-    await db.insert(usageLogs).values({
-      userId: body.userId || authUid || null,
+    await recordUsageEvent({
+      userId: auth.verifiedUserId ?? body.userId ?? null,
       requestType: body.requestType,
       status: body.status,
-      tokensUsed: totalTokens,
-      model: body.model || null,
-      latencyMs: body.latencyMs != null ? Math.round(body.latencyMs) : null,
-      source: authorizedSource === "android_app" ? "android_app" : (body.source || "ingest_api"),
+      tokensUsed: resolvedTokens,
+      promptTokens: body.promptTokens ?? null,
+      completionTokens: body.completionTokens ?? null,
+      model: body.model ?? null,
+      provider: body.provider ?? "nvidia",
+      latencyMs: body.latencyMs ?? null,
+      requestId: body.requestId ?? null,
+      errorMessage: body.errorMessage ?? null,
+      source: body.source ?? auth.defaultSource,
     });
 
-    return NextResponse.json({ ok: true, source: authorizedSource });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Validation failed.", details: error.flatten() }, { status: 422 });
+      return NextResponse.json(
+        { error: "Validation failed.", details: error.flatten() },
+        { status: 422 },
+      );
     }
-    console.error("[api/usage/ingest] Error persisting usage log:", error);
-    return NextResponse.json({ error: "Failed to record usage event." }, { status: 500 });
+    console.error("[api/usage/ingest] error:", sanitizeErrorMessage(error));
+    return NextResponse.json(
+      { error: "Failed to record usage event." },
+      { status: 500 },
+    );
   }
 }

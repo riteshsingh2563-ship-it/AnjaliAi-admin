@@ -10,6 +10,7 @@ import { recordAuditLog } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/constants";
 import { env, isAdminSessionSecretConfigured } from "@/lib/env";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
@@ -56,11 +57,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await ensureAdminAllowlistSeeded();
-
+  let allow;
   const email = firebaseUser.email.toLowerCase();
-  const rows = await db.select().from(adminAllowlist).where(eq(adminAllowlist.email, email)).limit(1);
-  const allow = rows[0];
+  try {
+    await ensureAdminAllowlistSeeded();
+    const rows = await db
+      .select()
+      .from(adminAllowlist)
+      .where(eq(adminAllowlist.email, email))
+      .limit(1);
+    allow = rows[0];
+  } catch (error) {
+    console.error("[api/auth/session] database error:", error);
+    return NextResponse.json(
+      {
+        error:
+          "Database connection error while verifying admin allowlist. Verify DATABASE_URL in Vercel settings.",
+      },
+      { status: 500 },
+    );
+  }
 
   if (!allow || !allow.active) {
     await recordAuditLog({
@@ -72,7 +88,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This Google account is not an authorized administrator for ANJALI. Ask an existing owner to add your email to the admin allowlist.",
+          "This Google account is not an authorized administrator for ANJALI. Ask an existing owner to add your email to the admin allowlist (or set ADMIN_EMAILS in Vercel).",
       },
       { status: 403 },
     );

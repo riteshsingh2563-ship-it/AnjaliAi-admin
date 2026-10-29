@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { ensureDatabaseSchema } from "@/db/init";
 import { usageLogs } from "@/db/schema";
 import { requireAuthorizedAdmin, UnauthorizedError } from "@/lib/admin-auth";
 import { isUsageIngestConfigured } from "@/lib/env";
-import { ensureDatabaseSchema } from "@/db/init";
+import { syncFirestoreUsageIfNeeded } from "@/lib/nvidia-ai";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAuthorizedAdmin();
-    await ensureDatabaseSchema();
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -19,67 +20,76 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const days = Math.min(Number(searchParams.get("days") ?? 14) || 14, 90);
-  const since = new Date();
-  since.setDate(since.getDate() - days);
+  try {
+    await ensureDatabaseSchema();
+    await syncFirestoreUsageIfNeeded();
 
-  const filters = [gte(usageLogs.timestamp, since)];
-  const whereClause = and(...filters);
+    const { searchParams } = new URL(request.url);
+    const days = Math.min(Number(searchParams.get("days") ?? 14) || 14, 90);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const [{ count: totalRequests }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(usageLogs)
-    .where(whereClause);
+    const whereClause = gte(usageLogs.timestamp, since);
 
-  const [{ count: failedRequests }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(usageLogs)
-    .where(and(whereClause, sql`${usageLogs.status} = 'failure'`));
+    const [{ count: totalRequests }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usageLogs)
+      .where(whereClause);
 
-  const [{ count: rateLimited }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(usageLogs)
-    .where(and(whereClause, sql`${usageLogs.status} = 'rate_limited'`));
+    const [{ count: failedRequests }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usageLogs)
+      .where(and(whereClause, eq(usageLogs.status, "failure")));
 
-  const [{ distinctUsers }] = await db
-    .select({ distinctUsers: sql<number>`count(distinct ${usageLogs.userId})::int` })
-    .from(usageLogs)
-    .where(whereClause);
+    const [{ count: rateLimited }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usageLogs)
+      .where(and(whereClause, eq(usageLogs.status, "rate_limited")));
 
-  const [{ totalTokens }] = await db
-    .select({ totalTokens: sql<number>`coalesce(sum(${usageLogs.tokensUsed}), 0)::int` })
-    .from(usageLogs)
-    .where(whereClause);
+    const [{ distinctUsers }] = await db
+      .select({ distinctUsers: sql<number>`count(distinct ${usageLogs.userId})::int` })
+      .from(usageLogs)
+      .where(whereClause);
 
-  const dailySeries = await db
-    .select({
-      day: sql<string>`to_char(date_trunc('day', ${usageLogs.timestamp}), 'YYYY-MM-DD')`,
-      requests: sql<number>`count(*)::int`,
-      failures: sql<number>`count(*) filter (where ${usageLogs.status} = 'failure')::int`,
-    })
-    .from(usageLogs)
-    .where(whereClause)
-    .groupBy(sql`1`)
-    .orderBy(sql`1`);
+    const [{ totalTokens }] = await db
+      .select({ totalTokens: sql<number>`coalesce(sum(${usageLogs.tokensUsed}), 0)::int` })
+      .from(usageLogs)
+      .where(whereClause);
 
-  const recent = await db
-    .select()
-    .from(usageLogs)
-    .orderBy(desc(usageLogs.timestamp))
-    .limit(100);
+    const dailySeries = await db
+      .select({
+        day: sql<string>`to_char(date_trunc('day', ${usageLogs.timestamp}), 'YYYY-MM-DD')`,
+        requests: sql<number>`count(*)::int`,
+        failures: sql<number>`count(*) filter (where ${usageLogs.status} = 'failure')::int`,
+      })
+      .from(usageLogs)
+      .where(whereClause)
+      .groupBy(sql`1`)
+      .orderBy(sql`1`);
 
-  return NextResponse.json({
-    rangeDays: days,
-    ingestConfigured: isUsageIngestConfigured,
-    totals: {
-      totalRequests,
-      failedRequests,
-      rateLimited,
-      distinctUsers,
-      totalTokens,
-    },
-    dailySeries,
-    recent,
-  });
+    const recent = await db
+      .select()
+      .from(usageLogs)
+      .orderBy(desc(usageLogs.timestamp))
+      .limit(100);
+
+    return NextResponse.json({
+      rangeDays: days,
+      ingestConfigured: isUsageIngestConfigured,
+      totals: {
+        totalRequests,
+        failedRequests,
+        rateLimited,
+        distinctUsers,
+        totalTokens,
+      },
+      dailySeries,
+      recent,
+    });
+  } catch (error) {
+    console.error("[api/usage] failed to load usage data:", error);
+    return NextResponse.json(
+      { error: "Failed to load usage statistics." },
+      { status: 500 },
+    );
+  }
 }

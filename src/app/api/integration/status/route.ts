@@ -1,24 +1,25 @@
 import { NextResponse } from "next/server";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { ensureDatabaseSchema } from "@/db/init";
 import { adminAllowlist } from "@/db/schema";
 import { requireAuthorizedAdmin, UnauthorizedError } from "@/lib/admin-auth";
 import {
   isFirebaseAdminConfigured,
   isAdminSessionSecretConfigured,
   isUsageIngestConfigured,
-  isNvidiaConfigured,
   env,
 } from "@/lib/env";
-import { ensureDatabaseSchema } from "@/db/init";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
 import {
   getAiConfig,
   getCustomization,
   getGeneralSettings,
   getPersonalityConfig,
+  resolveServerNvidiaApiKey,
 } from "@/lib/config-service";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -34,15 +35,16 @@ export async function GET() {
   let databaseOk = false;
   let adminCount = 0;
   try {
-    await db.execute(sql`select 1`);
     await ensureDatabaseSchema();
+    await db.execute(sql`select 1`);
     databaseOk = true;
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(adminAllowlist)
-      .where(sql`active = true`);
+      .where(eq(adminAllowlist.active, true));
     adminCount = count;
-  } catch {
+  } catch (error) {
+    console.error("[integration/status] database check failed:", error);
     databaseOk = false;
   }
 
@@ -58,6 +60,10 @@ export async function GET() {
   }
 
   let publishState = null;
+  let nvidiaConfigured = Boolean(env.NVIDIA_API_KEY);
+  let nvidiaEndpoint = env.NVIDIA_API_ENDPOINT;
+  let nvidiaModel = env.NVIDIA_MODEL;
+
   if (databaseOk) {
     try {
       const [personality, ai, customization, general] = await Promise.all([
@@ -66,6 +72,11 @@ export async function GET() {
         getCustomization(),
         getGeneralSettings(),
       ]);
+      const resolvedKey = await resolveServerNvidiaApiKey(ai);
+      nvidiaConfigured = Boolean(resolvedKey.key);
+      nvidiaEndpoint = ai.apiEndpoint;
+      nvidiaModel = ai.selectedModel;
+
       publishState = {
         personality: {
           version: personality.version,
@@ -112,11 +123,16 @@ export async function GET() {
       databaseId: env.FIREBASE_DATABASE_ID,
       sharedDocumentPath: "app_config/ai",
     },
+    nvidiaAi: {
+      configured: nvidiaConfigured,
+      endpoint: nvidiaEndpoint,
+      model: nvidiaModel,
+    },
     storage: {
-      configured: isFirebaseAdminConfigured && Boolean(env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
+      configured:
+        isFirebaseAdminConfigured && Boolean(env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
     },
     usageIngest: { configured: isUsageIngestConfigured },
-    nvidia: { configured: isNvidiaConfigured },
     publishState,
   });
 }

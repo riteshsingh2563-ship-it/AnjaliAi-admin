@@ -1,82 +1,63 @@
-# ANJALI AI — Admin Dashboard
+# ANJALI AI — Admin Dashboard (`admin-dashboard`)
 
-Private Next.js administration panel for the **ANJALI • Your Bestie** Android companion app.
+Production Next.js Admin Dashboard for the **ANJALI — Your Bestie** Android application.
 
-## Architecture Overview
-
-1. **Authentication & Server-Side Authorization**
-   - Admins sign in with Google on `/login` using the client Firebase SDK (`firebase/auth`).
-   - `POST /api/auth/session` verifies the Firebase ID token server-side via Google's public JWKS (`src/lib/verifyFirebaseToken.ts`) against `FIREBASE_PROJECT_ID` (`gen-lang-client-0553500643`).
-   - The verified email is checked against the PostgreSQL `admin_allowlist` table (`src/lib/admin-auth.ts`). If `admin_allowlist` is empty on first boot, it automatically seeds from the `ADMIN_EMAILS` environment variable (`src/lib/bootstrap-admins.ts`).
-   - Every protected page (`src/app/(admin)/layout.tsx`) and API route calls `requireAuthorizedAdmin()` on the server, re-checking both the signed `anjali_admin_session` HTTP-only cookie and `admin_allowlist.active = true`.
-
-2. **PostgreSQL + Drizzle ORM (`src/db/schema.ts`)**
-   - Stores authoritative dashboard state across 7 tables:
-     - `admin_allowlist` — authorized admin emails and roles (`owner` / `admin`)
-     - `personality_config` — Anjali's persona, traits, tone, greeting, and system instructions
-     - `ai_config` — AI model selection, temperature, max output tokens, languages, feature flags, and fallback rules
-     - `app_customization` — display name, avatar URL, welcome message, theme colors, announcement banner, and feature toggles
-     - `general_settings` — app display name, default language, maintenance mode, and retention settings
-     - `audit_logs` — immutable audit trail of every admin login and configuration update
-     - `usage_logs` — AI request telemetry reported via `POST /api/usage/ingest`
-
-3. **Cloud Firestore Sync (`src/lib/sync-firestore.ts`)**
-   - Connects server-side via `firebase-admin/firestore` to project `gen-lang-client-0553500643` and named database:
-     `ai-studio-android-anjaliai-af35263e-02d3-4218-b283-00d5976cfc2d`
-   - Every time an admin saves changes on **Personality**, **AI Configuration**, **App Customization**, or **General Settings**, the server writes a unified document to:
-     - `app_config/ai` (listened to in real time by the Android app's `observeBackendAppConfig()`)
-     - `app_config/personality`, `app_config/model`, `app_config/customization`, and `app_config/general`
+- **Production URL:** `https://anjalia.vercel.app`
+- **Firebase Project ID:** `gen-lang-client-0553500643`
+- **Cloud Firestore Named Database ID:** `ai-studio-android-anjaliai-af35263e-02d3-4218-b283-00d5976cfc2d`
+- **Shared Live Configuration Document:** `app_config/ai`
+- **AI Provider Endpoint:** `https://integrate.api.nvidia.com/v1/chat/completions`
 
 ---
 
-## Required Environment Variables
+## 1. Required Environment Variables (Vercel)
 
-Copy `.env.example` to `.env.local` (for local development) or configure these in **Vercel → Project Settings → Environment Variables**:
+Configure these in **Vercel → Project (`anjalia`) → Settings → Environment Variables**:
 
-| Variable | Scope | Description |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | Server-only | PostgreSQL connection string (e.g. Neon, Supabase, or Vercel Postgres) |
-| `ADMIN_SESSION_SECRET` | Server-only | Random 32+ character string (`openssl rand -hex 32`) used to sign session cookies |
-| `ADMIN_EMAILS` | Server-only | Comma-separated Google emails seeded into `admin_allowlist` on first login (e.g. `riteshsingh2563@gmail.com`) |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Public | Firebase Web API key for `gen-lang-client-0553500643` |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Public | `gen-lang-client-0553500643.firebaseapp.com` |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Public | `gen-lang-client-0553500643` |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Public | Firebase App ID (`1:833479988539:android:108970847125f7f2f6d31e` or Web App ID) |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Public | `gen-lang-client-0553500643.firebasestorage.app` |
-| `FIREBASE_PROJECT_ID` | Server-only | `gen-lang-client-0553500643` |
-| `FIREBASE_DATABASE_ID` | Server-only | `ai-studio-android-anjaliai-af35263e-02d3-4218-b283-00d5976cfc2d` |
-| `FIREBASE_SERVICE_ACCOUNT_KEY` | Server-only | Base64-encoded JSON (or raw JSON) of a Firebase Admin Service Account key |
-| `USAGE_INGEST_API_KEY` | Server-only | Optional shared secret for `POST /api/usage/ingest` |
-
----
-
-## Database Setup & Migration
-
-1. Provision a PostgreSQL database (Neon, Supabase, or Vercel Postgres) and set `DATABASE_URL`.
-2. Push the Drizzle schema to your PostgreSQL database:
-   ```bash
-   npm run db:push
-   ```
-   *(Alternatively, execute `drizzle/0000_initial_schema.sql` directly in your SQL editor.)*
+| Variable Name | Scope | Required | Purpose |
+| :--- | :--- | :--- | :--- |
+| `DATABASE_URL` | Server | **Yes** | Neon PostgreSQL connection string (`postgresql://...`) |
+| `ADMIN_SESSION_SECRET` | Server | **Yes** | 32+ character random secret for signing HTTP-only admin session cookies |
+| `ADMIN_EMAILS` | Server | **Yes** | Comma-separated list of authorized admin Google emails (e.g., `riteshsingh2563@gmail.com`) |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Public | **Yes** | Firebase Web SDK API Key (for Google Sign-In on `/login`) |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Public | **Yes** | `gen-lang-client-0553500643.firebaseapp.com` |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Public | **Yes** | `gen-lang-client-0553500643` |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Public | **Yes** | Firebase Web App ID |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Public | Optional | `gen-lang-client-0553500643.firebasestorage.app` |
+| `NEXT_PUBLIC_APP_URL` | Public | Optional | `https://anjalia.vercel.app` |
+| `FIREBASE_PROJECT_ID` | Server | **Yes** | `gen-lang-client-0553500643` |
+| `FIREBASE_DATABASE_ID` | Server | **Yes** | `ai-studio-android-anjaliai-af35263e-02d3-4218-b283-00d5976cfc2d` |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | Server | **Yes** | Raw JSON string or base64-encoded JSON of your Firebase Admin Service Account key (or set `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`) |
+| `NVIDIA_API_KEY` | Server | **Yes** | Server-side NVIDIA AI API key (`nvapi-...`) for `/api/ai/chat` |
+| `NVIDIA_API_ENDPOINT` | Server | Optional | Defaults to `https://integrate.api.nvidia.com/v1/chat/completions` |
+| `NVIDIA_MODEL` | Server | Optional | Defaults to `google/gemma-4-31b-it` |
+| `USAGE_INGEST_API_KEY` | Server | Optional | Optional shared secret for server-to-server `POST /api/usage/ingest` (Android app users authenticate automatically via Firebase ID tokens) |
 
 ---
 
-## Deploying to GitHub & Vercel
+## 2. Database Schema & Non-Destructive Migrations (Neon PostgreSQL)
 
-1. **Push to GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "chore: production-ready Anjali AI Admin Dashboard"
-   git branch -M main
-   git remote add origin https://github.com/<your-username>/<your-repo>.git
-   git push -u origin main
-   ```
-2. **Import into Vercel**
-   - Go to [vercel.com/new](https://vercel.com/new) and import your GitHub repository.
-   - Framework Preset: **Next.js** (detected automatically).
-   - Add all environment variables from `.env.example` under **Environment Variables**.
-   - Click **Deploy**.
-3. **Authorize Your Vercel Domain in Firebase Auth**
-   - Open [Firebase Console → Authentication → Settings → Authorized domains](https://console.firebase.google.com/project/gen-lang-client-0553500643/authentication/settings).
-   - Add your Vercel domain (e.g. `your-dashboard.vercel.app`) so Google Sign-In popups are permitted.
+1. **Automatic Non-Destructive Schema Sync (`src/db/init.ts`):**
+   - Every server cold-start automatically runs `ensureDatabaseSchema()`, which executes `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, and `CREATE UNIQUE INDEX IF NOT EXISTS` for all 7 tables (`admin_allowlist`, `personality_config`, `ai_config`, `app_customization`, `general_settings`, `audit_logs`, `usage_logs`) and seeds `admin_allowlist` from `ADMIN_EMAILS` with `ON CONFLICT ("email") DO NOTHING`.
+   - Existing production rows are **never** dropped, truncated, or overwritten.
+2. **Manual SQL Migrations (Optional):**
+   - `drizzle/0000_initial_schema.sql` — Full idempotent schema creation.
+   - `drizzle/0001_nvidia_and_usage_enhancements.sql` — Incremental non-destructive migration for existing databases.
+
+---
+
+## 3. Deploying from Your Android Phone to Vercel
+
+1. **Push or Upload to GitHub:**
+   - In Google AI Studio, tap the **GitHub** icon in the top toolbar to push the repository to your GitHub account (or download the ZIP and upload the contents of `admin-dashboard/` to your GitHub repo via the GitHub mobile browser).
+2. **Configure Vercel Root Directory:**
+   - Open `https://vercel.com` in Chrome on your Android phone and open your project (`anjalia`).
+   - Go to **Settings → General → Root Directory**:
+     - If your GitHub repository contains the full workspace (both Android app and `admin-dashboard`), set **Root Directory** to `admin-dashboard`.
+     - If your GitHub repository contains only the contents of `admin-dashboard` at its root, leave **Root Directory** blank (`.`).
+3. **Verify Environment Variables:**
+   - Go to **Settings → Environment Variables** and ensure `DATABASE_URL`, `ADMIN_SESSION_SECRET`, `ADMIN_EMAILS`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `NVIDIA_API_KEY`, and the `NEXT_PUBLIC_FIREBASE_*` variables are set.
+4. **Redeploy:**
+   - Tap **Deployments** → tap the **⋮ (three dots)** next to the latest deployment → tap **Redeploy**.
+5. **Verify Live Status:**
+   - Sign in at `https://anjalia.vercel.app/login`, open **Integration Status** (`/integration`) to confirm PostgreSQL, Firebase Admin/Firestore, and NVIDIA AI are all green, and tap **Test AI connection** on the **AI Configuration** (`/ai-config`) page to verify live token usage recording.

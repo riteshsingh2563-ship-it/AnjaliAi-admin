@@ -5,6 +5,7 @@ import { recordAuditLog } from "@/lib/audit";
 import { AUDIT_ACTIONS, ALLOWED_IMAGE_TYPES, MAX_AVATAR_UPLOAD_BYTES } from "@/lib/constants";
 import { randomUUID } from "crypto";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {

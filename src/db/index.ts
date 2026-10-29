@@ -1,5 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { env } from "@/lib/env";
 
 const globalForDb = globalThis as typeof globalThis & {
   __arenaNextJsPostgresqlPool?: Pool;
@@ -7,17 +8,33 @@ const globalForDb = globalThis as typeof globalThis & {
 };
 
 function getPool(): Pool {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl =
+    env.DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.NEON_DATABASE_URL;
+
   if (!databaseUrl) {
     throw new Error(
       "DATABASE_URL is not configured. Set DATABASE_URL in your environment variables.",
     );
   }
+
   if (!globalForDb.__arenaNextJsPostgresqlPool) {
-    globalForDb.__arenaNextJsPostgresqlPool = new Pool({
+    const pool = new Pool({
       connectionString: databaseUrl,
+      max: 5,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
     });
+    // Prevent Neon PostgreSQL auto-suspend / idle connection termination from
+    // emitting an unhandled error event on the Node.js process.
+    pool.on("error", (err) => {
+      console.warn("[db] PostgreSQL idle client warning:", err.message);
+    });
+    globalForDb.__arenaNextJsPostgresqlPool = pool;
   }
+
   return globalForDb.__arenaNextJsPostgresqlPool;
 }
 

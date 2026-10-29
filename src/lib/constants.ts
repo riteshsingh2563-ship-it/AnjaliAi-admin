@@ -2,10 +2,14 @@
 // write into app configuration. Keeping these as explicit allow-lists means
 // the API routes can reject anything unexpected instead of trusting raw input.
 
-// Models verified to work with the ANJALI AI integration (Firebase AI Logic /
-// Gemini API and NVIDIA / Gemma endpoints). If an admin sets a model outside
-// this list we still allow it, but mark it as "unverified" in the UI.
+// Models verified to work with the ANJALI AI integration (NVIDIA AI API /
+// Gemma & Llama endpoints as well as Firebase AI Logic / Gemini models).
 export const VERIFIED_GEMINI_MODELS = [
+  "google/gemma-4-31b-it",
+  "meta/llama-3.3-70b-instruct",
+  "meta/llama-3.1-70b-instruct",
+  "meta/llama-3.1-8b-instruct",
+  "google/gemma-2-27b-it",
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
   "gemini-2.5-pro",
@@ -13,9 +17,9 @@ export const VERIFIED_GEMINI_MODELS = [
   "gemini-2.0-flash-lite",
   "gemini-1.5-flash",
   "gemini-1.5-pro",
-  "google/gemma-4-31b-it",
-  "meta/llama-3.3-70b-instruct",
 ] as const;
+
+export const AI_PROVIDERS = ["nvidia", "gemini"] as const;
 
 export const SUPPORTED_LANGUAGES = ["Hindi", "Hinglish", "English"] as const;
 

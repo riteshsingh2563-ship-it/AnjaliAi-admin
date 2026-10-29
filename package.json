@@ -17,8 +17,8 @@
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
     "firebase": "^13.1.0",
-    "firebase-admin": "^14.5.0",
-    "jose": "^6.2.13",
+    "firebase-admin": "^13.4.0",
+    "jose": "^5.9.6",
     "lucide-react": "^1.63.0",
     "next": "16.2.6",
     "pg": "8.20.0",
@@ -28,6 +28,10 @@
     "server-only": "^0.0.1",
     "swr": "^2.5.1",
     "zod": "^4.6.7"
+  },
+  "overrides": {
+    "jwks-rsa": "^3.2.0",
+    "jose": "^5.9.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",

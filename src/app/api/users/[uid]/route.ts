@@ -5,6 +5,7 @@ import { getFirebaseAdmin } from "@/lib/firebase-admin";
 import { recordAuditLog } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/constants";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({ disabled: z.boolean() });

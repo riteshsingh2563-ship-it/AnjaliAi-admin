@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthorizedAdmin, UnauthorizedError } from "@/lib/admin-auth";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export type DirectoryUser = {

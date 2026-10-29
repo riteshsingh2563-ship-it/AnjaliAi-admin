@@ -1,23 +1,24 @@
 import "server-only";
 import { db } from "@/db";
+import { ensureDatabaseSchema } from "@/db/init";
 import { adminAllowlist } from "@/db/schema";
 import { env } from "@/lib/env";
 
 let seeded = false;
 
 /**
- * Seeds the admin_allowlist table from the ADMIN_EMAILS environment variable
- * (comma separated) the first time it is needed, but only if the table is
- * currently empty. This never overwrites or removes manually-managed rows.
+ * Ensures the database schema is present and seeds the admin_allowlist table
+ * from the ADMIN_EMAILS environment variable (comma separated). Uses
+ * ON CONFLICT (email) DO NOTHING so it never overwrites or removes
+ * existing admin rows.
  */
 export async function ensureAdminAllowlistSeeded() {
+  await ensureDatabaseSchema();
+
   if (seeded) return;
   seeded = true;
 
   if (!env.ADMIN_EMAILS) return;
-
-  const existing = await db.select({ id: adminAllowlist.id }).from(adminAllowlist).limit(1);
-  if (existing.length > 0) return;
 
   const emails = env.ADMIN_EMAILS.split(",")
     .map((e) => e.trim().toLowerCase())
@@ -34,5 +35,5 @@ export async function ensureAdminAllowlistSeeded() {
         addedBy: "env:ADMIN_EMAILS",
       })),
     )
-    .onConflictDoNothing();
+    .onConflictDoNothing({ target: adminAllowlist.email });
 }

@@ -6,6 +6,7 @@ import { personalitySchema } from "@/lib/validation";
 import { recordAuditLog } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/constants";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {

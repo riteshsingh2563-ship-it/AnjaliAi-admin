@@ -23,9 +23,13 @@ type IntegrationStatusResponse = {
     databaseId: string;
     sharedDocumentPath: string;
   };
+  nvidiaAi?: {
+    configured: boolean;
+    endpoint: string;
+    model: string;
+  };
   storage: { configured: boolean };
   usageIngest: { configured: boolean };
-  nvidia: { configured: boolean };
   publishState: {
     personality: PublishSectionState;
     ai: PublishSectionState;
@@ -63,7 +67,7 @@ export function IntegrationClient() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <StatusItem
           icon={<Database className="h-5 w-5" />}
-          title="PostgreSQL Database (Drizzle)"
+          title="PostgreSQL Database (Neon + Drizzle)"
           ok={data.database.configured && data.database.ok}
           badge={data.database.ok ? "Connected" : data.database.configured ? "Unreachable" : "Missing DATABASE_URL"}
           detail={`Active authorized admins in allowlist: ${data.adminAllowlist.activeAdmins}`}
@@ -94,29 +98,17 @@ export function IntegrationClient() {
         />
 
         <StatusItem
-          icon={<Cloud className="h-5 w-5" />}
-          title="Firebase Storage & Usage Ingest"
-          ok={data.storage.configured || data.usageIngest.configured}
-          badge={
-            data.storage.configured && data.usageIngest.configured
-              ? "All Optional Enabled"
-              : "Optional Integrations"
-          }
-          detail={`Avatar Storage: ${data.storage.configured ? "Ready" : "Not configured"} • Usage Ingest API: ${
-            data.usageIngest.configured ? "Ready" : "Not configured"
-          }`}
-        />
-
-        <StatusItem
           icon={<Cpu className="h-5 w-5" />}
-          title="NVIDIA AI Server-Side Proxy (/api/ai/chat)"
-          ok={data.nvidia?.configured ?? false}
-          badge={data.nvidia?.configured ? "Configured" : "Missing NVIDIA_API_KEY"}
-          detail={
-            data.nvidia?.configured
-              ? "Server-side proxy ready to process Android chat requests"
-              : "Android clients fallback to client-side direct API key"
+          title="NVIDIA AI Provider & Usage Tracking"
+          ok={Boolean(data.nvidiaAi?.configured && data.usageIngest.configured)}
+          badge={
+            data.nvidiaAi?.configured
+              ? "AI & Usage Active"
+              : "Set NVIDIA_API_KEY"
           }
+          detail={`Model: ${data.nvidiaAi?.model ?? "google/gemma-4-31b-it"} • Usage Ingest: ${
+            data.usageIngest.configured ? "Active" : "Not configured"
+          }`}
         />
       </div>
 

@@ -14,9 +14,7 @@ import {
 // Admin authorization
 // ---------------------------------------------------------------------------
 // Only emails present (and active) in this table may access the dashboard.
-// This is checked server-side on every request (session + every API route),
-// not just hidden in the UI. Seed it via ADMIN_EMAILS env var on first boot,
-// or insert rows directly with SQL.
+// Checked server-side on every request (session + every API route).
 export const adminAllowlist = pgTable(
   "admin_allowlist",
   {
@@ -159,9 +157,10 @@ export const auditLogs = pgTable("audit_logs", {
 });
 
 // ---------------------------------------------------------------------------
-// AI usage events. Populated only via the authenticated ingest endpoint
-// (meant to be called from a trusted backend / Cloud Function tied to the
-// Android app) or left empty until that integration is wired up.
+// AI usage events. Populated by:
+// 1. Server-side NVIDIA AI completions (/api/ai/chat)
+// 2. Authenticated usage ingestion (/api/usage/ingest)
+// 3. Idempotent Firestore AI message synchronization
 // ---------------------------------------------------------------------------
 export const usageLogs = pgTable("usage_logs", {
   id: serial("id").primaryKey(),

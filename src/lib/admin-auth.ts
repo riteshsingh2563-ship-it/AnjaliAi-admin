@@ -1,9 +1,9 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
+import { ensureDatabaseSchema } from "@/db/init";
 import { adminAllowlist } from "@/db/schema";
 import { getAdminSessionFromCookies } from "@/lib/session";
-import { ensureDatabaseSchema } from "@/db/init";
 
 export type AuthorizedAdmin = {
   email: string;
@@ -25,25 +25,26 @@ export async function getAuthorizedAdmin(): Promise<AuthorizedAdmin | null> {
 
   try {
     await ensureDatabaseSchema();
-  } catch (err) {
-    console.error("[getAuthorizedAdmin] Schema init check:", err);
+
+    const rows = await db
+      .select()
+      .from(adminAllowlist)
+      .where(eq(adminAllowlist.email, session.email.toLowerCase()))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row || !row.active) return null;
+
+    return {
+      email: row.email,
+      name: session.name,
+      picture: session.picture,
+      role: row.role,
+    };
+  } catch (error) {
+    console.error("[admin-auth] failed to verify admin allowlist:", error);
+    return null;
   }
-
-  const rows = await db
-    .select()
-    .from(adminAllowlist)
-    .where(eq(adminAllowlist.email, session.email.toLowerCase()))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row || !row.active) return null;
-
-  return {
-    email: row.email,
-    name: session.name,
-    picture: session.picture,
-    role: row.role,
-  };
 }
 
 export class UnauthorizedError extends Error {

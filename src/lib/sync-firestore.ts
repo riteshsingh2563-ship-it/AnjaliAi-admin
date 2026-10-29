@@ -1,6 +1,7 @@
 import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { getFirebaseAdmin } from "@/lib/firebase-admin";
+import { env, DEFAULT_BACKEND_URL, DEFAULT_NVIDIA_API_ENDPOINT } from "@/lib/env";
 import type {
   personalityConfig as PersonalityTable,
   aiConfig as AiConfigTable,
@@ -20,21 +21,29 @@ export type PublishResult = {
 };
 
 /**
+ * Reads the existing `app_config/ai` document from Cloud Firestore if
+ * available so first-time PostgreSQL initialization can preserve any
+ * existing production settings already stored in Firestore.
+ */
+export async function readExistingFirestoreAppConfig(): Promise<Record<string, unknown> | null> {
+  const admin = getFirebaseAdmin();
+  if (!admin) return null;
+  try {
+    const snap = await admin.firestore.collection("app_config").doc("ai").get();
+    if (!snap.exists) return null;
+    return (snap.data() as Record<string, unknown>) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Publishes the current configuration to Cloud Firestore so the Android app
- * can read it (directly, via Firestore real-time listeners on `app_config/ai`)
+ * can read it (via Firestore real-time listeners on `app_config/ai`)
  * without requiring a new APK release.
  *
- * Writes:
- *  - app_config/ai           -> unified flat document compatible with both the
- *                               dashboard schema and the Android app's
- *                               `BackendAppConfig.fromMap()`.
- *  - app_config/personality  -> full personality configuration object.
- *  - app_config/model        -> full AI/model configuration object.
- *  - app_config/customization-> full app customization object.
- *  - app_config/general      -> full general settings object.
- *
- * No-ops (and reports `attempted: false`) when Firebase Admin credentials
- * are not configured for this deployment.
+ * Security note: `nvidiaApiKey` is stripped and never written to public
+ * Firestore documents from the dashboard.
  */
 export async function publishConfigToFirestore(data: {
   personality: PersonalityRow;
@@ -44,7 +53,11 @@ export async function publishConfigToFirestore(data: {
 }): Promise<PublishResult> {
   const admin = getFirebaseAdmin();
   if (!admin) {
-    return { attempted: false, success: false, error: "Firebase Admin SDK is not configured." };
+    return {
+      attempted: false,
+      success: false,
+      error: "Firebase Admin SDK is not configured.",
+    };
   }
 
   try {
@@ -54,7 +67,9 @@ export async function publishConfigToFirestore(data: {
       personality.version + ai.version + customization.version + general.version;
 
     const resolvedName =
-      personality.characterName.trim() || customization.displayName.trim() || "Anjali";
+      personality.characterName.trim() ||
+      customization.displayName.trim() ||
+      "Anjali";
     const resolvedGreeting =
       personality.greetingMessage.trim() ||
       customization.welcomeMessage.trim() ||
@@ -63,6 +78,10 @@ export async function publishConfigToFirestore(data: {
       customization.bannerEnabled && customization.bannerText.trim().length > 0
         ? customization.bannerText.trim()
         : "";
+    const resolvedEndpoint =
+      ai.apiEndpoint.trim() || DEFAULT_NVIDIA_API_ENDPOINT;
+    const resolvedBackendUrl =
+      ai.backendUrl.trim() || env.NEXT_PUBLIC_APP_URL || DEFAULT_BACKEND_URL;
 
     const flatDoc = {
       // Dashboard canonical fields
@@ -83,6 +102,9 @@ export async function publishConfigToFirestore(data: {
       emojiEnabled: personality.emojiUsage,
       friendlySupportive: personality.friendlySupportive,
       maximumResponseLength: ai.maxOutputTokens,
+      provider: ai.provider || "nvidia",
+      apiEndpoint: resolvedEndpoint,
+      backendUrl: resolvedBackendUrl,
       selectedModel: ai.selectedModel,
       temperature: ai.temperature,
       aiEnabled: ai.aiEnabled,
@@ -123,6 +145,10 @@ export async function publishConfigToFirestore(data: {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
+    // Strip server-only nvidiaApiKey before writing the model document to Firestore
+    const { nvidiaApiKey: _omittedSecret, ...safeAiDoc } = ai;
+    void _omittedSecret;
+
     const batch = admin.firestore.batch();
     const configCollection = admin.firestore.collection("app_config");
 
@@ -134,7 +160,7 @@ export async function publishConfigToFirestore(data: {
     );
     batch.set(
       configCollection.doc("model"),
-      { ...ai, updatedAt: FieldValue.serverTimestamp() },
+      { ...safeAiDoc, updatedAt: FieldValue.serverTimestamp() },
       { merge: true },
     );
     batch.set(

@@ -1,4 +1,5 @@
--- Initial PostgreSQL Schema for ANJALI AI Admin Dashboard (Drizzle ORM)
+-- Initial & Non-Destructive PostgreSQL Schema for ANJALI AI Admin Dashboard (Drizzle ORM)
+-- Safe to run on both empty and existing Neon PostgreSQL databases.
 
 CREATE TABLE IF NOT EXISTS "admin_allowlist" (
   "id" serial PRIMARY KEY NOT NULL,
@@ -34,10 +35,14 @@ CREATE TABLE IF NOT EXISTS "personality_config" (
 
 CREATE TABLE IF NOT EXISTS "ai_config" (
   "id" integer PRIMARY KEY DEFAULT 1 NOT NULL,
-  "selected_model" text DEFAULT 'gemini-2.0-flash' NOT NULL,
+  "provider" text DEFAULT 'nvidia' NOT NULL,
+  "api_endpoint" text DEFAULT 'https://integrate.api.nvidia.com/v1/chat/completions' NOT NULL,
+  "nvidia_api_key" text DEFAULT '' NOT NULL,
+  "backend_url" text DEFAULT 'https://anjalia.vercel.app' NOT NULL,
+  "selected_model" text DEFAULT 'google/gemma-4-31b-it' NOT NULL,
   "model_verified" boolean DEFAULT true NOT NULL,
-  "temperature" double precision DEFAULT 0.9 NOT NULL,
-  "max_output_tokens" integer DEFAULT 500 NOT NULL,
+  "temperature" double precision DEFAULT 0.75 NOT NULL,
+  "max_output_tokens" integer DEFAULT 600 NOT NULL,
   "supported_languages" jsonb DEFAULT '["Hindi","Hinglish","English"]'::jsonb NOT NULL,
   "response_style" text DEFAULT 'friendly' NOT NULL,
   "ai_enabled" boolean DEFAULT true NOT NULL,
@@ -53,6 +58,12 @@ CREATE TABLE IF NOT EXISTS "ai_config" (
   "published_to_firestore" boolean DEFAULT false NOT NULL,
   "published_at" timestamp with time zone
 );
+
+ALTER TABLE "ai_config"
+  ADD COLUMN IF NOT EXISTS "provider" text DEFAULT 'nvidia' NOT NULL,
+  ADD COLUMN IF NOT EXISTS "api_endpoint" text DEFAULT 'https://integrate.api.nvidia.com/v1/chat/completions' NOT NULL,
+  ADD COLUMN IF NOT EXISTS "nvidia_api_key" text DEFAULT '' NOT NULL,
+  ADD COLUMN IF NOT EXISTS "backend_url" text DEFAULT 'https://anjalia.vercel.app' NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "app_customization" (
   "id" integer PRIMARY KEY DEFAULT 1 NOT NULL,
@@ -109,7 +120,26 @@ CREATE TABLE IF NOT EXISTS "usage_logs" (
   "request_type" text DEFAULT 'chat_message' NOT NULL,
   "status" text DEFAULT 'success' NOT NULL,
   "tokens_used" integer,
+  "prompt_tokens" integer,
+  "completion_tokens" integer,
   "model" text,
+  "provider" text DEFAULT 'nvidia',
   "latency_ms" integer,
+  "request_id" text,
+  "error_message" text,
   "source" text DEFAULT 'ingest_api' NOT NULL
 );
+
+ALTER TABLE "usage_logs"
+  ADD COLUMN IF NOT EXISTS "prompt_tokens" integer,
+  ADD COLUMN IF NOT EXISTS "completion_tokens" integer,
+  ADD COLUMN IF NOT EXISTS "provider" text DEFAULT 'nvidia',
+  ADD COLUMN IF NOT EXISTS "request_id" text,
+  ADD COLUMN IF NOT EXISTS "error_message" text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "usage_logs_request_id_idx"
+  ON "usage_logs" ("request_id")
+  WHERE "request_id" IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS "usage_logs_timestamp_idx"
+  ON "usage_logs" ("timestamp");
