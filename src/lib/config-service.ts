@@ -30,7 +30,7 @@ type AiConfigRow = typeof aiConfig.$inferSelect;
 
 export type ClientSafeAiConfig = Omit<AiConfigRow, "nvidiaApiKey"> & {
   apiKeyConfigured: boolean;
-  apiKeySource: "env" | "database" | "none";
+  apiKeySource: "env" | "database" | "firestore" | "none";
   apiKeyMasked: string;
 };
 
@@ -43,14 +43,26 @@ export function maskSecretKey(raw: string): string {
 
 export async function resolveServerNvidiaApiKey(row?: AiConfigRow): Promise<{
   key: string;
-  source: "env" | "database" | "none";
+  source: "env" | "database" | "firestore" | "none";
 }> {
   if (env.NVIDIA_API_KEY && !env.NVIDIA_API_KEY.startsWith("YOUR_")) {
     return { key: env.NVIDIA_API_KEY, source: "env" };
   }
   const aiRow = row ?? (await getAiConfig());
-  if (aiRow.nvidiaApiKey && aiRow.nvidiaApiKey.trim().length > 0 && !aiRow.nvidiaApiKey.startsWith("YOUR_")) {
+  if (
+    aiRow.nvidiaApiKey &&
+    aiRow.nvidiaApiKey.trim().length > 0 &&
+    !aiRow.nvidiaApiKey.startsWith("YOUR_")
+  ) {
     return { key: aiRow.nvidiaApiKey.trim(), source: "database" };
+  }
+  const existingFs = await readExistingFirestoreAppConfig();
+  if (
+    existingFs &&
+    typeof existingFs.apiKey === "string" &&
+    existingFs.apiKey.trim().startsWith("nvapi-")
+  ) {
+    return { key: existingFs.apiKey.trim(), source: "firestore" };
   }
   return { key: "", source: "none" };
 }

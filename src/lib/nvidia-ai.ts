@@ -392,9 +392,14 @@ export async function executeServerNvidiaChatCompletion(params: {
     2,
     Math.max(0, params.temperatureOverride ?? ai.temperature ?? 0.75),
   );
+  const isReasoning = preferredModel.includes("nemotron");
+  const minTokens = isReasoning ? 2048 : 200;
   const maxTokens = Math.min(
     4096,
-    Math.max(32, params.maxTokensOverride ?? ai.maxOutputTokens ?? 600),
+    Math.max(
+      minTokens,
+      params.maxTokensOverride ?? ai.maxOutputTokens ?? minTokens,
+    ),
   );
 
   const messages: NvidiaChatMessage[] =
