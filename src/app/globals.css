@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --color-bg: #fdf6f9;
+  --color-bg-soft: #fbeef4;
+  --color-surface: #ffffff;
+  --color-border: #f1dbe6;
+  --color-text: #241a21;
+  --color-text-muted: #7a6b72;
+  --color-accent: #ec4899;
+  --color-accent-2: #a855f7;
+}
+
+.dark {
+  --color-bg: #161119;
+  --color-bg-soft: #1d1522;
+  --color-surface: #221a28;
+  --color-border: #332633;
+  --color-text: #f4ecf2;
+  --color-text-muted: #b6a6b2;
+  --color-accent: #f472b6;
+  --color-accent-2: #c084fc;
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --color-app-bg: var(--color-bg);
+  --color-app-bg-soft: var(--color-bg-soft);
+  --color-app-surface: var(--color-surface);
+  --color-app-border: var(--color-border);
+  --color-app-text: var(--color-text);
+  --color-app-text-muted: var(--color-text-muted);
+  --color-app-accent: var(--color-accent);
+  --color-app-accent-2: var(--color-accent-2);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border-radius: 999px;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.28s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.22s ease-out;
+}
