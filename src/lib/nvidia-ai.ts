@@ -92,6 +92,12 @@ const globalForUsageSync = globalThis as typeof globalThis & {
   __anjaliLastFirestoreUsageSyncMs?: number;
 };
 
+export type FirestoreUsageSyncResult = {
+  synced: number;
+  available: boolean;
+  reason?: string;
+};
+
 /**
  * Syncs real AI replies (`sender == "anjali"`) stored in Cloud Firestore
  * (`users/{uid}/conversations/{cid}/messages/{mid}`) into `usage_logs` using
@@ -101,64 +107,116 @@ const globalForUsageSync = globalThis as typeof globalThis & {
  * APKs that write messages to Firestore are accurately counted without
  * inventing fake metrics or double-counting.
  */
-export async function syncFirestoreUsageIfNeeded(): Promise<void> {
+export async function syncFirestoreUsageIfNeeded(
+  force = false,
+): Promise<FirestoreUsageSyncResult> {
   const now = Date.now();
   if (
+    !force &&
     globalForUsageSync.__anjaliLastFirestoreUsageSyncMs &&
-    now - globalForUsageSync.__anjaliLastFirestoreUsageSyncMs < 60_000
+    now - globalForUsageSync.__anjaliLastFirestoreUsageSyncMs < 20_000
   ) {
-    return;
+    return { synced: 0, available: true, reason: "debounced" };
   }
   globalForUsageSync.__anjaliLastFirestoreUsageSyncMs = now;
 
   const admin = getFirebaseAdmin();
-  if (!admin) return;
+  if (!admin) {
+    return {
+      synced: 0,
+      available: false,
+      reason: "FIREBASE_SERVICE_ACCOUNT_KEY is not configured on the server.",
+    };
+  }
 
   try {
     await ensureDatabaseSchema();
     const ai = await getAiConfig();
     const defaultModel = ai.selectedModel || "google/gemma-4-31b-it";
 
-    // Query recent AI messages via collectionGroup("messages") or per-user conversations
-    const userList = await admin.auth.listUsers(100);
-    for (const user of userList.users) {
-      const convSnap = await admin.firestore
-        .collection("users")
-        .doc(user.uid)
-        .collection("conversations")
-        .limit(20)
+    let messageDocs: Array<{ id: string; data: Record<string, any> }> = [];
+
+    // 1. Try single efficient collectionGroup query across all users' messages
+    try {
+      const groupSnap = await admin.firestore
+        .collectionGroup("messages")
+        .limit(500)
         .get();
 
-      for (const convDoc of convSnap.docs) {
-        const msgSnap = await convDoc.ref.collection("messages").limit(100).get();
-        for (const msgDoc of msgSnap.docs) {
-          const data = msgDoc.data();
-          if (data.sender !== "anjali") continue;
+      messageDocs = groupSnap.docs.map((d) => ({
+        id: d.id,
+        data: d.data() as Record<string, any>,
+      }));
+    } catch (groupError) {
+      console.warn(
+        "[usage-sync] collectionGroup query failed, attempting per-user fallback:",
+        groupError,
+      );
+    }
 
-          const createdAtRaw = data.createdAt;
-          let ts = new Date();
-          if (createdAtRaw && typeof createdAtRaw.toDate === "function") {
-            ts = createdAtRaw.toDate();
+    // 2. Fallback: query per user if collectionGroup returned 0 or failed
+    if (messageDocs.length === 0) {
+      try {
+        const usersSnap = await admin.firestore
+          .collection("users")
+          .limit(50)
+          .get();
+        for (const uDoc of usersSnap.docs) {
+          const convSnap = await uDoc.ref
+            .collection("conversations")
+            .limit(20)
+            .get();
+          for (const cDoc of convSnap.docs) {
+            const mSnap = await cDoc.ref
+              .collection("messages")
+              .limit(100)
+              .get();
+            for (const mDoc of mSnap.docs) {
+              messageDocs.push({
+                id: mDoc.id,
+                data: mDoc.data() as Record<string, any>,
+              });
+            }
           }
-
-          await recordUsageEvent({
-            userId: user.uid,
-            requestType: "chat_message",
-            status: "success",
-            tokensUsed: null, // Firestore chat docs do not store token counts; keep honest null
-            model: defaultModel,
-            provider: ai.provider || "nvidia",
-            latencyMs: null,
-            requestId: `firestore_msg_${msgDoc.id}`,
-            source: "firestore_sync",
-            timestamp: ts,
-          });
         }
+      } catch (userWalkError) {
+        console.warn("[usage-sync] Per-user fallback failed:", userWalkError);
       }
     }
+
+    let syncedCount = 0;
+    for (const msg of messageDocs) {
+      const data = msg.data;
+      if (data.sender !== "anjali") continue;
+
+      const createdAtRaw = data.createdAt;
+      let ts = new Date();
+      if (createdAtRaw && typeof createdAtRaw.toDate === "function") {
+        ts = createdAtRaw.toDate();
+      } else if (createdAtRaw instanceof Date) {
+        ts = createdAtRaw;
+      }
+
+      await recordUsageEvent({
+        userId: typeof data.userId === "string" ? data.userId : null,
+        requestType: "chat_message",
+        status: "success",
+        tokensUsed: null, // Firestore chat docs do not store token counts; keep honest null
+        model: defaultModel,
+        provider: ai.provider || "nvidia",
+        latencyMs: null,
+        requestId: `firestore_msg_${msg.id}`,
+        source: "firestore_sync",
+        timestamp: ts,
+      });
+      syncedCount++;
+    }
+
+    return { synced: syncedCount, available: true };
   } catch (error) {
-    // Non-fatal: log sanitized warning and continue
-    console.warn("[usage-sync] Firestore usage sync skipped:", sanitizeErrorMessage(error));
+    const sanitized = sanitizeErrorMessage(error);
+    console.warn("[usage-sync] Firestore usage sync skipped:", sanitized);
+    return { synced: 0, available: false, reason: sanitized };
   }
 }
 

@@ -22,9 +22,11 @@ export async function GET(request: NextRequest) {
 
   try {
     await ensureDatabaseSchema();
-    await syncFirestoreUsageIfNeeded();
 
     const { searchParams } = new URL(request.url);
+    const forceSync = searchParams.get("sync") === "true";
+    const firestoreSync = await syncFirestoreUsageIfNeeded(forceSync);
+
     const days = Math.min(Number(searchParams.get("days") ?? 14) || 14, 90);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -75,6 +77,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       rangeDays: days,
       ingestConfigured: isUsageIngestConfigured,
+      firestoreSync,
       totals: {
         totalRequests,
         failedRequests,
